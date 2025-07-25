@@ -62,6 +62,17 @@
           <option value="entrega">Entrega</option>
         </select>
       </div>
+      <div id="retiradaContainer" class="space-y-4">
+        <div>
+          <label for="dataRetirada" class="block text-sm font-medium text-red-600 strawberry-icon">Data de Retirada</label>
+          <input type="date" id="dataRetirada" name="dataRetirada" required class="mt-1 block w-full px-3 py-2 border border-pink-300 rounded-md shadow-sm focus:outline-none focus:ring-red-400 focus:border-red-400 bg-pink-50">
+        </div>
+        <div>
+          <label for="horaRetirada" class="block text-sm font-medium text-red-600 strawberry-icon">Hora de Retirada</label>
+          <input type="time" id="horaRetirada" name="horaRetirada" required class="mt-1 block w-full px-3 py-2 border border-pink-300 rounded-md shadow-sm focus:outline-none focus:ring-red-400 focus:border-red-400 bg-pink-50">
+        </div>
+        <p class="text-center text-sm text-red-600">A data e hora de retirada podem variar após confirmação</p>
+      </div>
       <div id="enderecoContainer" class="hidden space-y-4">
         <div>
           <label for="rua" class="block text-sm font-medium text-red-600 strawberry-icon">Rua</label>
@@ -86,6 +97,7 @@
     const form = document.getElementById('pedidoForm');
     const opcaoSelect = document.getElementById('opcao');
     const enderecoContainer = document.getElementById('enderecoContainer');
+    const retiradaContainer = document.getElementById('retiradaContainer');
     const quantidadeInput = document.getElementById('quantidade');
     const valorTotalDisplay = document.getElementById('valorTotal');
     const taxaEntregaDisplay = document.getElementById('taxaEntrega');
@@ -94,6 +106,8 @@
     const ruaInput = document.getElementById('rua');
     const numeroInput = document.getElementById('numero');
     const complementoInput = document.getElementById('complemento');
+    const dataRetiradaInput = document.getElementById('dataRetirada');
+    const horaRetiradaInput = document.getElementById('horaRetirada');
     const autocompleteDropdown = document.getElementById('autocomplete-dropdown');
 
     const PRECO_UNIDADE = 10;
@@ -128,18 +142,19 @@
           if (data.features && data.features.length > 0) {
             data.features.forEach(feature => {
               const address = feature.properties.street || feature.properties.name || '';
-              const neighbourhood = feature.properties.district || '';
+              const district = feature.properties.district || '';
               const city = feature.properties.city || '';
               const state = feature.properties.state || '';
               const coordinates = feature.geometry.coordinates; // [lon, lat]
               if (city.toLowerCase() === 'joinville' && state.toLowerCase() === 'santa catarina') {
                 const item = document.createElement('div');
                 item.className = 'autocomplete-item';
-                item.textContent = neighbourhood ? `${address}, ${neighbourhood}, ${city}, ${state}` : `${address}, ${city}, ${state}`;
+                item.textContent = district ? `${address}, ${district}, ${city}, ${state}` : `${address}, ${city}, ${state}`;
                 item.dataset.coordinates = JSON.stringify(coordinates);
                 item.addEventListener('click', async () => {
-                  ruaInput.value = neighbourhood ? `${address}, ${neighbourhood}` : address;
+                  ruaInput.value = district ? `${address}, ${district}` : address; // Preenche rua e bairro
                   autocompleteDropdown.classList.add('hidden');
+                  // Calcular distância com OpenRouteService
                   await calcularDistancia(coordinates);
                   calcularValorTotal();
                 });
@@ -199,18 +214,33 @@
       valorTotalDisplay.textContent = `Valor Total: R$ ${total.toFixed(2).replace('.', ',')}`;
     }
 
+    // Definir estado inicial com base na opção padrão ("retirada")
+    retiradaContainer.classList.remove('hidden');
+    enderecoContainer.classList.add('hidden');
+    taxaEntregaDisplay.classList.add('hidden');
+    dataRetiradaInput.required = true;
+    horaRetiradaInput.required = true;
+    ruaInput.required = false;
+    numeroInput.required = false;
+    complementoInput.required = false;
+
     opcaoSelect.addEventListener('change', () => {
       enderecoContainer.classList.toggle('hidden', opcaoSelect.value !== 'entrega');
+      retiradaContainer.classList.toggle('hidden', opcaoSelect.value !== 'retirada');
       taxaEntregaDisplay.classList.toggle('hidden', opcaoSelect.value !== 'entrega');
       if (opcaoSelect.value === 'entrega') {
         ruaInput.required = true;
         numeroInput.required = true;
         complementoInput.required = false;
+        dataRetiradaInput.required = false;
+        horaRetiradaInput.required = false;
         initAutocomplete();
-      } else {
+      } else if (opcaoSelect.value === 'retirada') {
         ruaInput.required = false;
         numeroInput.required = false;
         complementoInput.required = false;
+        dataRetiradaInput.required = true;
+        horaRetiradaInput.required = true;
         autocompleteDropdown.classList.add('hidden');
         distanciaEstimada = 0;
         taxaValor.textContent = TAXA_BASE_ENTREGA.toFixed(2).replace('.', ',');
@@ -222,6 +252,8 @@
     ruaInput.addEventListener('input', calcularValorTotal);
     numeroInput.addEventListener('input', calcularValorTotal);
     complementoInput.addEventListener('input', calcularValorTotal);
+    dataRetiradaInput.addEventListener('input', calcularValorTotal);
+    horaRetiradaInput.addEventListener('input', calcularValorTotal);
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -232,12 +264,18 @@
       const rua = opcao === 'entrega' ? document.getElementById('rua').value : 'Não aplicável';
       const numero = opcao === 'entrega' ? document.getElementById('numero').value : 'Não aplicável';
       const complemento = opcao === 'entrega' && document.getElementById('complemento').value ? document.getElementById('complemento').value : 'Não informado';
+      const dataRetirada = opcao === 'retirada' ? document.getElementById('dataRetirada').value : 'Não aplicável';
+      const horaRetirada = opcao === 'retirada' ? document.getElementById('horaRetirada').value : 'Não aplicável';
       const endereco = opcao === 'entrega' ? `${rua}, ${numero}${complemento !== 'Não informado' ? ', ' + complemento : ''}, Joinville, SC` : 'Não aplicável';
       const taxaEntrega = opcao === 'entrega' ? TAXA_BASE_ENTREGA + Math.ceil(distanciaEstimada) * TAXA_POR_KM : 0;
       const valorTotal = (quantidade * PRECO_UNIDADE + taxaEntrega).toFixed(2).replace('.', ',');
 
-      const mensagem = `🍓 Moranguinhos do Amor by Sil 🍓\nNome: ${nome}\nCelular: ${celular}\nQuantidade: ${quantidade}\nOpção: ${opcao}\nEndereço: ${endereco}\nValor Total: R$ ${valorTotal}${opcao === 'entrega' ? `\nTaxa de Entrega Estimada: R$ ${taxaEntrega.toFixed(2).replace('.', ',')}` : ''}`;
-      const numeroWhatsApp = '5547984490544'; // Substitua pelo número desejado com código do país
+      const mensagem = `🍓 Novo Pedido Moranguinhos do Amor by Sil 🍓\nNome: ${nome}\nCelular: ${celular}\nQuantidade: ${quantidade}\nOpção: ${opcao}\n${
+        opcao === 'retirada' ? `Data de Retirada: ${dataRetirada}\nHora de Retirada: ${horaRetirada}\nA data e hora de retirada podem variar após confirmação` : `Endereço: ${endereco}`
+      }\nValor Total: R$ ${valorTotal}${
+        opcao === 'entrega' ? `\nTaxa de Entrega: R$ ${taxaEntrega.toFixed(2).replace('.', ',')} (pode variar no momento da entrega)` : ''
+      }`;
+      const numeroWhatsApp = '5547984490544';
       const url = `https://wa.me/${numeroWhatsApp}?text=${encodeURIComponent(mensagem)}`;
       
       window.open(url, '_blank');
